@@ -213,16 +213,17 @@ def check_db(query, compare, path):
         cnx = sqlite3.connect(path)
         cur = cnx.cursor()
         db = cur.execute(query).fetchall()
-        db = [idx[0] for idx in db] if (len(db[0]) < 2) else db
-
-        if db is not None:
-            if len(compare) > 1:
-                missing = set(zip(*compare)).difference(set(db))
-                available = set(zip(*compare)).intersection(set(db))
-            else:
-                missing = set(compare[0]).difference(set(db))
-                available = set(compare[0]).intersection(set(db))
-            return {"missing": list(missing), "available": list(available)}
+        if len(db) == 0:
+            db = [""]
+        else:
+            db = [idx[0] for idx in db] if (len(db[0]) < 2) else db
+        if len(compare) > 1:
+            missing = set(zip(*compare)).difference(set(db))
+            available = set(zip(*compare)).intersection(set(db))
+        else:
+            missing = set(compare[0]).difference(set(db))
+            available = set(compare[0]).intersection(set(db))
+        return {"missing": list(missing), "available": list(available)}
 
     except Error as e:
         print(f"The error '{e}' occurred")

@@ -79,7 +79,6 @@ with open("./data/temp/missing_rsids.v", "wb") as f:
 
 print(len(rsid_compare), len(rsid_compare["missing"]), len(rsid_compare["available"]))
 
-
 # -------- check if SNPedia data is missing from genotype table
 query = "SELECT rsid, genotype FROM genotypes"
 geno_compare = fn.check_db(query=query, compare=[df.rsid.tolist(), df.genotype.tolist()], path="data/SNP_db.sqlite")
@@ -89,72 +88,75 @@ with open("./data/temp/missing_genos.v", "wb") as f:
 
 print(len(geno_compare), len(geno_compare["missing"]), len(geno_compare["available"]))
 
-
-# ------- select available genotypes from db to match on user
-cnx = fn.create_connection("data/SNP_db.sqlite")
-genos = f"{geno_compare['available']}"[1:-1]  # convert to str, rm []
-query = f"SELECT * FROM genotypes WHERE (rsid, genotype) IN (VALUES {genos});"
-geno_df = pd.read_sql_query(query, cnx)
-
-
-# ------- sort data by magnitude & split by repute [good & bad]
-geno_df = geno_df.sort_values("magnitude", ascending=False)
-g_df = copy.deepcopy(geno_df[geno_df.repute == "good"][:50])
-b_df = copy.deepcopy(geno_df[geno_df.repute == "bad"][:50])
-df = g_df.append(b_df, ignore_index=True).iloc[:, 1:]
+# ------- Stop here if no data is available for immediate report
+if (len(rsid_compare['available']) > 0 and len(geno_compare['available'])) > 0:
+    # ------- select available genotypes from db to match on user
+    cnx = fn.create_connection("data/SNP_db.sqlite")
+    genos = f"{geno_compare['available']}"[1:-1]  # convert to str, rm []
+    query = f"SELECT * FROM genotypes WHERE (rsid, genotype) IN (VALUES {genos});"
+    geno_df = pd.read_sql_query(query, cnx)
 
 
-# ------- import summaries and publication metadata
-rsids = f"{df.rsid.tolist()}"[1:-1]  # convert to str and remove [] brackets
-
-# most_cited summaries
-query = f"""
-SELECT rsid, abs_summary, most_cited, most_recent, pmids
-FROM rsid_summaries 
-WHERE (rsid IN ({rsids}) AND most_cited = 1);
-"""
-c_df = pd.read_sql_query(query, cnx)
-
-# most_recent summaries
-query = f"""
-SELECT rsid, abs_summary, most_cited, most_recent, pmids
-FROM rsid_summaries 
-WHERE (rsid IN ({rsids}) AND most_recent = 1);
-"""
-r_df = pd.read_sql_query(query, cnx)
-
-# publications metadata
-query = f"""
-SELECT rsid, pmid, date, n_citedby, ncbi_url 
-FROM rsid_pubs 
-WHERE rsid IN ({rsids})
-"""
-pub_df = pd.read_sql_query(query, cnx)
+    # ------- sort data by magnitude & split by repute [good & bad]
+    geno_df = geno_df.sort_values("magnitude", ascending=False)
+    g_df = copy.deepcopy(geno_df[geno_df.repute == "good"][:50])
+    b_df = copy.deepcopy(geno_df[geno_df.repute == "bad"][:50])
+    df = g_df.append(b_df, ignore_index=True).iloc[:, 1:]
 
 
-# ------- construct final dataframe
+    # ------- import summaries and publication metadata
+    rsids = f"{df.rsid.tolist()}"[1:-1]  # convert to str and remove [] brackets
 
-# %%
-c_df = c_df.set_index("rsid")
-r_df = r_df.set_index("rsid")
-df = df.set_index("rsid")
-# %%
-df = df.join(c_df[["abs_summary", "pmids"]], how="left", rsuffix="_mC")
-df = df.join(c_df[["abs_summary", "pmids"]], how="left", rsuffix="_mR")
-df = df.rename(columns={"abs_summary": "abs_summary_mC", "pmids": "pmids_mC"})
-df["fullurl"] = df.fullurl.apply(lambda x: x.replace("bots.", ""))
-df["fullurl"] = df.fullurl.apply(lambda x: x.rsplit("(")[0] + "(" + x.rsplit("(")[1].upper())
-# %%
-df.columns
-# %%
-with open("data/temp/dataframe.v", "wb") as f:
-    pickle.dump(df, f)
-# %%
-df.to_csv("data/temp/dataframe.csv")
+    # most_cited summaries
+    query = f"""
+    SELECT rsid, abs_summary, most_cited, most_recent, pmids
+    FROM rsid_summaries 
+    WHERE (rsid IN ({rsids}) AND most_cited = 1);
+    """
+    c_df = pd.read_sql_query(query, cnx)
+
+    # most_recent summaries
+    query = f"""
+    SELECT rsid, abs_summary, most_cited, most_recent, pmids
+    FROM rsid_summaries 
+    WHERE (rsid IN ({rsids}) AND most_recent = 1);
+    """
+    r_df = pd.read_sql_query(query, cnx)
+
+    # publications metadata
+    query = f"""
+    SELECT rsid, pmid, date, n_citedby, ncbi_url 
+    FROM rsid_pubs 
+    WHERE rsid IN ({rsids})
+    """
+    pub_df = pd.read_sql_query(query, cnx)
+
+    # ------- construct final dataframe
+
+    # %%
+    c_df = c_df.set_index("rsid")
+    r_df = r_df.set_index("rsid")
+    df = df.set_index("rsid")
+    # %%
+    df = df.join(c_df[["abs_summary", "pmids"]], how="left", rsuffix="_mC")
+    df = df.join(c_df[["abs_summary", "pmids"]], how="left", rsuffix="_mR")
+    df = df.rename(columns={"abs_summary": "abs_summary_mC", "pmids": "pmids_mC"})
+    df["fullurl"] = df.fullurl.apply(lambda x: x.replace("bots.", ""))
+    df["fullurl"] = df.fullurl.apply(lambda x: x.rsplit("(")[0] + "(" + x.rsplit("(")[1].upper())
+    # %%
+    df.columns
+    # %%
+    with open("data/temp/dataframe.v", "wb") as f:
+        pickle.dump(df, f)
+    # %%
+    df.to_csv("data/temp/dataframe.csv")
 
 
-# ------- trigger app.py to display dataframe in browser
+    # ------- trigger app.py to display dataframe in browser
 
+else:
+    print('no data for your genotype yet, come back later')
+    # TODO trigger app.py to display DB empty message.
 
 # ------- trigger scrape for missing information
 
