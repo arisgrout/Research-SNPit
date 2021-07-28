@@ -29,6 +29,7 @@ import pandas as pd
 import pickle
 import copy
 import modules.functions as fn
+from subprocess import Popen
 # from modules.functions import create_connection, execute_query, check_db
 
 # %%
@@ -56,19 +57,23 @@ if not path.exists("./data/SNP_db.sqlite"):
 if not path.exists("./data/SNPedia_ids.txt"):
     #  ---  build list of all SNP rsids available on ** SNPedia **
     # function saves list of rsids to file: "./data/SNPedia_ids.txt"
-    wiki_rsids = fn.all_snpedia_rsids()  
+    fn.all_snpedia_rsids()  
     #  TODO: rename functions (to exclude "SNPedia" & otherwise (to avoid LICENSING dispute) - do so "project-wide" at END)
     #  TODO: run this function separately on sleep timer to update list of SNPedia RSIDS periodically. 
 
 # %%
+#  Import list of all SNP rsids available on ** SNPedia **
+with open("./data/SNPedia_ids.txt", "rb") as f:
+    wiki_rsids = pickle.load(f)
 
-# %%
 # load 23andMe Data (raw test file)
 df = pd.read_csv(
     f"./data/temp/{fn.find_files('data/temp', '*.txt')[0]}", sep="\t", skiprows=20, names=["rsid", "chromosome", "position", "genotype"]
     )
 
-print(len(df))
+# reduce df to only rsids with metadata available on SNPedia
+keep_rsids = set(df.rsid).intersection(set(wiki_rsids))
+df = df.query('rsid in @keep_rsids')
 
 # -------- check if RSIDs are missing from publications table
 query = "SELECT DISTINCT rsid FROM rsid_pubs"
@@ -85,11 +90,13 @@ geno_compare = fn.check_db(query=query, compare=[df.rsid.tolist(), df.genotype.t
 
 with open("./data/temp/missing_genos.v", "wb") as f:
     pickle.dump(geno_compare["missing"], f)  # save missing_genos for later collection
+# %%
+# ------- trigger scrape for missing information
+Popen(["python3","./wiki_scrape.py"]) # start non-blocking subprocess
 
-print(len(geno_compare), len(geno_compare["missing"]), len(geno_compare["available"]))
-
+# %%
 # ------- Stop here if no data is available for immediate report
-if (len(rsid_compare['available']) > 0 and len(geno_compare['available'])) > 0:
+if (len(rsid_compare['available']) > 0 and len(geno_compare['available']) > 0):
     # ------- select available genotypes from db to match on user
     cnx = fn.create_connection("data/SNP_db.sqlite")
     genos = f"{geno_compare['available']}"[1:-1]  # convert to str, rm []
@@ -151,16 +158,29 @@ if (len(rsid_compare['available']) > 0 and len(geno_compare['available'])) > 0:
     # %%
     df.to_csv("data/temp/dataframe.csv")
 
-
     # ------- trigger app.py to display dataframe in browser
+    # TODO add this process. State how many geno's still need to be looked-up by backend prior to produce final report.
+    # TODO pop-up question, would you like to be notified when your report is ready? Enter email here.
 
 else:
     print('no data for your genotype yet, come back later')
     # TODO trigger app.py to display DB empty message.
 
-# ------- trigger scrape for missing information
 
+# TODO use asyncio to enable concurrency. Start scrape, and conduct scrape for concurrent threading. MUST refactor code into non-blocking I/O, for this to be effective.
+# https://www.youtube.com/watch?v=bs9tlDFWWdQ&t=356s 
+# https://docs.python.org/3.8/library/asyncio.html
+# https://testdriven.io/blog/concurrency-parallelism-asyncio/#recap-when-to-use-multiprocessing-vs-asyncio-or-threading
+# async (concurrent) API calls
+# multi-process runtimes for frontend web-app v. backend scrapes (using concurrent.futures)
+# backend scrape: subprocess PUB collection from SNPedia metadata collection; converge at ML summary generation step.
+# Can ML be subprocessed or would that be too much overhead on the GPU? 
+
+#  TODO: rename functions (to exclude "SNPedia" & otherwise (to avoid LICENSING dispute) - do so "project-wide" at END)
 
 # %%
 # with open("data/temp/dataframe.v", "rb") as f:
 #    df = pickle.load(f)
+
+
+
