@@ -32,14 +32,12 @@ import modules.functions as fn
 from subprocess import Popen
 # from modules.functions import create_connection, execute_query, check_db
 
-# %%
 # // RELOAD ALL CHANGED MODULES (JUPYTER SPECIAL FUNCTION) 
 # // autoreloads on each cell execution.
 # https://stackoverflow.com/questions/34377270/reload-module-from-a-folder
 %load_ext autoreload
 %autoreload 2
 
-# %%
 # // RELOAD ALL MODULES
 # for module in sys.modules.values():
 #     reload(module)
@@ -48,7 +46,6 @@ from subprocess import Popen
 # // RELOAD ONE MODULE
 # reload(functions)
 
-# %%
 # // FIRST TIME - SETUP FUNCTIONS
 if not path.exists("./data/SNP_db.sqlite"):
     # // DATABASE SETUP
@@ -71,32 +68,41 @@ df = pd.read_csv(
     f"./data/temp/{fn.find_files('data/temp', '*.txt')[0]}", sep="\t", skiprows=20, names=["rsid", "chromosome", "position", "genotype"]
     )
 
-# reduce df to only rsids with metadata available on SNPedia
+#  ---  Keep only rsids - if they exist in both SNPedia & the 23andMe raw test file
 keep_rsids = set(df.rsid).intersection(set(wiki_rsids))
-df = df.query('rsid in @keep_rsids')
+df_select = df.query('rsid in @keep_rsids')
+
+# Reduce further to rm INDEL MARKERS proprietary to 23andMe.
+df_no_indels = fn.exclude_indels(df_select)
+#  TODO: design method to handle 23andMe indels and include in query (see api_functions.py for details)
+
+print(f"\nRSIDs\n23andMe Raw: {len(df)} | SNPedia Total: {len(wiki_rsids)} | Intersect: {len(df_select)} | After Indels Removed: {len(df_no_indels)}\n")
+
+df = df_no_indels
 
 # -------- check if RSIDs are missing from publications table
+print('RSIDs')
 query = "SELECT DISTINCT rsid FROM rsid_pubs"
 rsid_compare = fn.check_db(query=query, compare=[df.rsid], path="data/SNP_db.sqlite")
 
 with open("./data/temp/missing_rsids.v", "wb") as f:
     pickle.dump(rsid_compare["missing"], f)  # save missing_rsids for later collection
 
-print(len(rsid_compare), len(rsid_compare["missing"]), len(rsid_compare["available"]))
-
 # -------- check if SNPedia data is missing from genotype table
+print('Genos')
 query = "SELECT rsid, genotype FROM genotypes"
 geno_compare = fn.check_db(query=query, compare=[df.rsid.tolist(), df.genotype.tolist()], path="data/SNP_db.sqlite")
 
 with open("./data/temp/missing_genos.v", "wb") as f:
     pickle.dump(geno_compare["missing"], f)  # save missing_genos for later collection
-# %%
+
 # ------- trigger scrape for missing information
 Popen(["python3","./wiki_scrape.py"]) # start non-blocking subprocess
+Popen(["python3","./txt_scrape.py"])
 
 # %%
 # ------- Stop here if no data is available for immediate report
-if (len(rsid_compare['available']) > 0 and len(geno_compare['available']) > 0):
+if (len(rsid_compare['available']) > 0) and (len(geno_compare['available']) > 0):
     # ------- select available genotypes from db to match on user
     cnx = fn.create_connection("data/SNP_db.sqlite")
     genos = f"{geno_compare['available']}"[1:-1]  # convert to str, rm []
@@ -140,22 +146,21 @@ if (len(rsid_compare['available']) > 0 and len(geno_compare['available']) > 0):
 
     # ------- construct final dataframe
 
-    # %%
     c_df = c_df.set_index("rsid")
     r_df = r_df.set_index("rsid")
     df = df.set_index("rsid")
-    # %%
+    
     df = df.join(c_df[["abs_summary", "pmids"]], how="left", rsuffix="_mC")
     df = df.join(c_df[["abs_summary", "pmids"]], how="left", rsuffix="_mR")
     df = df.rename(columns={"abs_summary": "abs_summary_mC", "pmids": "pmids_mC"})
     df["fullurl"] = df.fullurl.apply(lambda x: x.replace("bots.", ""))
     df["fullurl"] = df.fullurl.apply(lambda x: x.rsplit("(")[0] + "(" + x.rsplit("(")[1].upper())
-    # %%
+    
     df.columns
-    # %%
+    
     with open("data/temp/dataframe.v", "wb") as f:
         pickle.dump(df, f)
-    # %%
+    
     df.to_csv("data/temp/dataframe.csv")
 
     # ------- trigger app.py to display dataframe in browser
@@ -177,6 +182,8 @@ else:
 # Can ML be subprocessed or would that be too much overhead on the GPU? 
 
 #  TODO: rename functions (to exclude "SNPedia" & otherwise (to avoid LICENSING dispute) - do so "project-wide" at END)
+#  -----------------------  mvp-origins  -----------------------  Research-SNPit  -----------------------
+#  TODO: 'origins' folder v 'operations' folder (with DB setup & checks).
 
 # %%
 # with open("data/temp/dataframe.v", "rb") as f:
