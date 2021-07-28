@@ -223,6 +223,9 @@ def check_db(query, compare, path):
         else:
             missing = set(compare[0]).difference(set(db))
             available = set(compare[0]).intersection(set(db))
+
+        print(f"DB Check: missing: {len(missing)} | available {len(available)}\n")
+
         return {"missing": list(missing), "available": list(available)}
 
     except Error as e:
