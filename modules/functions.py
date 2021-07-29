@@ -388,6 +388,8 @@ def design_queries(df):
     SNP rsid genotypes can be reported in (minus/positive) orientation.
     If minus, then query string needs to be inversed.
 
+    * 23andMe SNPs are oriented towards the positive ("plus") strand, based on the GRCh37 reference. However, the orientation reported by SNPedia is based on the GRCh38 reference. The "StabilizedOrientation" on SNPedia represents the orientation on GRCh37, and can sometimes be a "minus".
+
     Args:
         df (pd.DataFrame): 23andMe dataframe
 
@@ -396,14 +398,16 @@ def design_queries(df):
     """
 
     q_snpedia = []
-    orientations = []
+    orientations37 = []
+    orientations38 = []
+    switcher = {"A": "T", "T": "A", "C": "G", "G": "C"}
 
     for index, row in df.iterrows():
-        r = row.rsid.lower()
-        g = list(row.genotype)
+        rsid = row["rsid"].lower()
+        geno = list(row["genotype"])
 
         # GET REQUEST
-        url = f"https://bots.snpedia.com/api.php?action=ask&query=[[{r}]][[Category:Is%20a%20snp]]|?Orientation&format=jsonfm&api_version=2"
+        url = f"https://bots.snpedia.com/api.php?action=ask&query=[[{rsid}]][[Category:Is%20a%20snp]]|?StabilizedOrientation|?Orientation&format=jsonfm&api_version=2"
         response = re.get(url)
 
         # slice applicable JSON from text response
@@ -416,32 +420,34 @@ def design_queries(df):
 
         # if minus oriented, flip nucleotide values
         try:
-            orient = result["results"][f"{r}"]["printouts"]["orientation"][0]
-            orientations.append(orient)
-            if orient == "minus":
-                for i in range(len(g)):
-                    if g[i] == "A":
-                        g[i] = "T"
-                    elif g[i] == "T":
-                        g[i] = "A"
-                    elif g[i] == "C":
-                        g[i] = "G"
-                    elif g[i] == "G":
-                        g[i] = "C"
+            orient37 = result["results"][f"{rsid}"]["printouts"]["stabilizedorientation"][0]
+            orientations37.append(orient37)
+            if orient37 == "minus":
+                for idx in range(len(geno)):
+                    geno[idx] = switcher.get(geno[idx], "-")  # default to '-' if nuc. missing
         except Exception:
-            print(r)
-            orientations.append("missing")
+            print("\nEXCEPTION:", rsid, "gr37 orientation missing", geno)
+            orientations37.append("missing")
             pass
+        try:
+            orient38 = result["results"][f"{rsid}"]["printouts"]["orientation"][0]
+            orientations38.append(orient38)
+        except Exception:
+            print("\nEXCEPTION:", rsid, "gr38 orientation missing", geno)
+            orientations38.append("missing")
 
-        # create queries
-        if len(g) == 2:
-            q_snpedia.append(f"{r}({g[0]};{g[1]})")
+        # create query
+        if len(geno) == 2:
+            q_snpedia.append(f"{rsid}({geno[0]};{geno[1]})")
         else:
-            q_snpedia.append(f"{r}({g[0]})")
+            q_snpedia.append(f"{rsid}({geno[0]})")
+
+        # print("\nDONE:", rsid, f'37: {orient37}', f'38: {orient38}', geno)
 
     # append data into dataframe
     df["query"] = q_snpedia
-    df["orientation"] = orientations
+    df["orientation_gr37"] = orientations37
+    df["orientation_gr38"] = orientations38
 
     return df
 
