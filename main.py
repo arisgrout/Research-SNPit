@@ -3,8 +3,8 @@ In:
 * 23andMe_raw_genotype.txt
 
 Out:
-* missing_rsids.v   12345
-* missing_genos.v   [C:T]
+* missing_rsids.v   rsid
+* missing_genos.v   (rsid, genotype)
 * dataframe.v       immediate report for app dashboard
 * dataframe.csv     immediate csv for app dashboard
 
@@ -25,7 +25,9 @@ import sys
 #import os.path
 from os import path
 from importlib import reload
+import numpy as np
 import pandas as pd
+from collections import OrderedDict
 import pickle
 import copy
 import modules.functions as fn
@@ -93,8 +95,12 @@ print('Genos')
 query = "SELECT rsid, genotype FROM genotypes"
 geno_compare = fn.check_db(query=query, compare=[df.rsid.tolist(), df.genotype.tolist()], path="data/SNP_db.sqlite")
 
+# DF of only rsid:geno pairs missing from DB:genotypes table
+missing_genos = [i[0] + i[1] for i in geno_compare['missing']]
+missing_genos = df.query('(rsid + genotype) == @missing_genos')
+
 with open("./data/temp/missing_genos.v", "wb") as f:
-    pickle.dump(geno_compare["missing"], f)  # save missing_genos for later collection
+    pickle.dump(missing_genos, f)  # save missing_genos for later collection
 
 # ------- trigger scrape for missing information
 Popen(["python3","./wiki_scrape.py"]) # start non-blocking subprocess
