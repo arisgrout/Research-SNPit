@@ -23,6 +23,7 @@ import sys
 #import os.path
 from os import path
 from importlib import reload
+from collections import OrderedDict
 import pandas as pd
 import pickle
 import copy
@@ -47,9 +48,35 @@ import modules.functions as fn
 # // Import Variables
 with open("./data/temp/missing_genos.v", "rb") as f:
     missing_genos = pickle.load(f)
-with open("./data/temp/missing_rsids.v", "rb") as f:
-    missing_rsids = pickle.load(f)
+# %%
+queries = fn.design_queries(missing_genos)
+# %%
+import requests as re
+from IPython.display import JSON
+import json
+url = "https://bots.snpedia.com/api.php?action=ask&query=[[rs11986414]][[Category:Is%20a%20snp]]|?StabilizedOrientation|?Orientation&format=jsonfm&api_version=2"
+#url = "https://bots.snpedia.com/api.php?action=ask&query=[[i5053861]][[Category:Is%20a%20snp]]|?Rs_StabilizedOrientation&format=jsonfm&api_version=2"
+response = re.get(url)
+print(response.text)
+# slice applicable JSON from text response
+start = response.text.find("results") - 1
+stop = response.text.find("serializer") - 11
+result = "{" + response.text[start:stop].lower() + "}"
 
+# convert: str(JSON) -> dict
+result = json.loads(result)  # dict
+
+# if minus oriented, flip nucleotide values
+orient37 = result["results"]["rs11986414"]["printouts"]["stabilizedorientation"][0]
+
+# rs2208454 - plus 
+# rs502581 - empty
+#JSON(response.json())
+# %%
+orient37
+# %%
+https://bots.snpedia.com/api.php?action=ask&query=[[{rs502581}]][[Category:Is%20a%20snp]]|?Orientation&format=jsonfm&api_version=2
+# %%
 #  ---  design SNPedia genotype queries for API calls (reorienting all "minus" genotypes to "positive" equivalents)
 df_queries = design_queries(df_no_indels)
 #  TODO: split into sub-functions, setup DB & checkpoints prior to collecting, fix somewhat flawed query design (notes in functions.py)
