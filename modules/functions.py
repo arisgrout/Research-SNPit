@@ -144,7 +144,8 @@ def create_db():
             position INTEGER,
             genotype TEXT,
             query TEXT,
-            orientation TEXT,
+            orient37 TEXT,
+            orient38 TEXT,
             magnitude TEXT,
             repute TEXT,
             summary TEXT,
@@ -437,8 +438,8 @@ def get_orientation(df):
         # print("\nDONE:", rsid, f'37: {orient37}', f'38: {orient38}', geno)
 
     # append data into dataframe
-    df["orientation_gr37"] = orientations37
-    df["orientation_gr38"] = orientations38
+    df["orient37"] = orientations37
+    df["orient38"] = orientations38
 
     return df
 
@@ -479,6 +480,59 @@ def get_queries(df):
             q_snpedia.append(f"{row.rsid}({row.genotype[0]})")
 
     df["query"] = q_snpedia
+
+    return df
+
+
+def join_snpedia(df):
+    """Use genotype queries to add variant: magnitude, repute, summary, SNPedia_url and fulltext data. Data from SNPedia API (webscrape).
+
+    Args:
+        df (pd.DataFrame): 23andMe raw data + query & orientation
+
+    Returns:
+        pd.DataFrame: ['rsid', 'chromosome', 'position', 'genotype', 'query', 'orientation', 'magnitude', 'repute', 'summary', 'fullurl', 'fulltext']
+    """
+
+    df = df.set_index("rsid")
+    query = df[df["query"] != ""]["query"].tolist()
+
+    url = "https://bots.snpedia.com/api.php"
+    counter = 0
+
+    for rsid in query:
+
+        # GET REQUEST
+        # rsid = 'rs53576(G;G)' # for testing
+        params = f"?action=ask&query=[[{rsid}]][[Category:Is a genotype]]|?Genotype|?Magnitude|?Repute|?Summary&format=jsonfm&api_version=2"
+        response = re.get(url + params)
+
+        # slice applicable JSON from text response
+        start = response.text.find("results") - 1
+        stop = response.text.find("serializer") - 11
+        result = "{" + response.text[start:stop].lower() + "}"  # dict
+
+        # convert: str -> dict(JSON) -> dataframe
+        result = json.loads(result)
+        result = pd.json_normalize(result).iloc[:, 1:-3]
+
+        # insert each col / val pair
+        rsid = rsid.partition("(")[0]  # result.columns[-1].split('/')[-1].partition('(')[0].partition('.')[-1]
+        for col in result:
+            key = col.split(".")[-1]
+            val = "".join(str(i) for i in result[col][0])
+            df.at[rsid, key] = val
+
+        counter += 1
+        print(df[df.index == rsid].iloc[:, 5:-1])
+        print(counter / len(query))
+
+    df = df.reset_index()
+    # save df to temp directory
+    with open("./data/temp/df_snpedia.v", "wb") as f:
+        pickle.dump(df, f)
+
+    print("Done: join_snpedia, saved to temp/df_snpedia.v")
 
     return df
 
