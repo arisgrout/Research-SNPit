@@ -13,6 +13,8 @@ Trigger:
 """
 
 # TODO Find alternative to SNPedia for gathering metadata.
+# TODO Refactor to non-blocking I/O
+# TODO asyncio api calls
 
 # Adds this file to top-level interpretter path, so runs "as if" from top.
 # import sys
