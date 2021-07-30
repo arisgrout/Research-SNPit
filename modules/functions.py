@@ -383,12 +383,11 @@ def exclude_indels(df):
 #  !!!  Split into: get_SNPedia_orientations (save DF), design_genotype_queries (save DF)
 
 
-def design_queries(df):
-    """get query strings for collecting genotype data.
+# TODO find a more fail-safe way of returning df. Send to DB on each run?
+def get_orientation(df):
+    """
     SNP rsid genotypes can be reported in (minus/positive) orientation.
-    If minus, then query string needs to be inversed.
-
-    * 23andMe SNPs are oriented towards the positive ("plus") strand, based on the GRCh37 reference. However, the orientation reported by SNPedia is based on the GRCh38 reference. The "StabilizedOrientation" on SNPedia represents the orientation on GRCh37, and can sometimes be a "minus".
+    If StabilizedOrientation is minus, then query string needs to be 'flipped'.
 
     Args:
         df (pd.DataFrame): 23andMe dataframe
@@ -397,10 +396,9 @@ def design_queries(df):
         SNPedia genotype query string, orientations: [list], [list]
     """
 
-    q_snpedia = []
     orientations37 = []
     orientations38 = []
-    switcher = {"A": "T", "T": "A", "C": "G", "G": "C"}
+    counter = 0
 
     for index, row in df.iterrows():
         rsid = row["rsid"].lower()
@@ -422,9 +420,6 @@ def design_queries(df):
         try:
             orient37 = result["results"][f"{rsid}"]["printouts"]["stabilizedorientation"][0]
             orientations37.append(orient37)
-            if orient37 == "minus":
-                for idx in range(len(geno)):
-                    geno[idx] = switcher.get(geno[idx], "-")  # default to '-' if nuc. missing
         except Exception:
             print("\nEXCEPTION:", rsid, "gr37 orientation missing", geno)
             orientations37.append("missing")
@@ -436,18 +431,54 @@ def design_queries(df):
             print("\nEXCEPTION:", rsid, "gr38 orientation missing", geno)
             orientations38.append("missing")
 
-        # create query
-        if len(geno) == 2:
-            q_snpedia.append(f"{rsid}({geno[0]};{geno[1]})")
-        else:
-            q_snpedia.append(f"{rsid}({geno[0]})")
+        counter += 1
+        print(counter)
 
         # print("\nDONE:", rsid, f'37: {orient37}', f'38: {orient38}', geno)
 
     # append data into dataframe
-    df["query"] = q_snpedia
     df["orientation_gr37"] = orientations37
     df["orientation_gr38"] = orientations38
+
+    return df
+
+
+def snp_flipper(snp):
+    """If StabilizedOrientation = 'minus' this function "flips" the 23andMe derived SNP to match the GRCh37 reference reported in SNPedia.
+
+    *23andMe SNPs are ALL reported in positive ("plus") orientation, but SNPedia shows SNPs as they appear in the GRCh37 reference; which often has SNPs in their "minus" orientation. https://snpedia.com/index.php/Orientation
+
+    In SNPedia the "StabilizedOrientation" field indicates the SNP orientation in the GRCh37 reference and thus SNPedia. The "Orientation" field indicates the displayed SNP orientation in the GRCh38 reference (when 23andMe upgrades to GRCh38, this "Orientation" field must be used to flip 'plus' oriented SNPs to 'minus' so they can match the GRCh38 reference).
+
+    Args:
+        snp (str): genotype of 'minus' oriented rsids
+
+    Returns:
+        flipped_snp (str): replace genotype with 'plus' oriented counterpart
+    """
+    flipper = {"A": "T", "T": "A", "C": "G", "G": "C"}
+    new_snp = "".join([flipper.get(nuc, "-") for nuc in snp])
+    return new_snp
+
+
+def get_queries(df):
+    """get query strings for collecting genotype data from SNPedia.
+
+    Args:
+        df (pd.DataFrame): genotypes df with orientation and genotypes
+
+    Returns:
+        df (pd.DataFrame): df with SNPedia queries added
+    """
+    q_snpedia = []
+
+    for index, row in df.iterrows():
+        if len(row.genotype) == 2:
+            q_snpedia.append(f"{row.rsid}({row.genotype[0]};{row.genotype[1]})")
+        else:
+            q_snpedia.append(f"{row.rsid}({row.genotype[0]})")
+
+    df["query"] = q_snpedia
 
     return df
 
