@@ -49,7 +49,55 @@ import modules.functions as fn
 with open("./data/temp/missing_genos.v", "rb") as f:
     missing_genos = pickle.load(f)
 # %%
-queries = fn.design_queries(missing_genos)
+# TODO Replace w/ better API than SNPedia (OpenSNP?)
+
+df_orient = fn.get_orientation(missing_genos)
+with open("./data/temp/df_orient.v", "wb") as f:
+    pickle.dump(df_orient, f)  # save df_orient for later collection
+
+# TODO some values casted as 'missing' when not actually missing from HTML. API query just failing to find for unknown reason. E.g. uncomment print(response.text) in function, then run line below. Compare to HTML at addresses:
+# fn.get_orientation(df_orient[df_orient.orientation_gr37 == 'missing'])
+# 'plus' stabilizedorientation: https://snpedia.com/index.php/rs28940586
+# FAILED 'minus' stabilizedorientation: https://www.snpedia.com/index.php/rs3094315
+# see github issue for details.
+# save missing to CSV for later eval
+#df_orient[df_orient.orientation_gr37 == 'missing'].to_csv('./data/#sOrient37_missing.csv', index=False)
+
+df_flip = copy.deepcopy(df_orient)
+df_flip['genotype'] = df_orient.apply(lambda x: fn.snp_flipper(x.genotype) if x.orientation_gr37 == 'minus' else x.genotype, axis=1)
+
+# %%
+df_q = fn.get_queries(df_flip)
+# %%
+# If orientation was missing, query can't be used and must be deleted.
+# TODO fix rsid genotypes that have 'missing' orientations 
+df_q.loc[(df_q.orientation_gr37 == 'missing'), 'query'] = ''
+# print(df_q[df_q['query'] == ''].count()) #check it worked
+# %%
+# ------------------ RESUME HERE
+
+
+# %%
+df_q.head()
+# %%
+test[6]
+# %%
+df_query = fn.get_queries(df_orient)
+# %%
+geno_dict = OrderedDict() # save missing rsid:geno pairs as dict (emulating genotypes table) for later collection. 
+geno_dict = [{
+                'rsid':pair[0],
+                'chromosome':'',
+                'position':np.nan,
+                'genotype':pair[1],
+                'query':'',
+                'orientation_gr37':'',
+                'orientation_gr38':'',
+                'magnitude':'',
+                'repute':'',
+                'summary':'',
+                'fullurl':'',
+            } for pair in geno_compare['missing']]
 # %%
 import requests as re
 from IPython.display import JSON
