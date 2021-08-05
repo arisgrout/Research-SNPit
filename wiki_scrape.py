@@ -1,15 +1,25 @@
 """
 In:
-* missing_rsids.v   12345
-* missing_genos.v   [C:T]
+(0) missing_genos.v
+    ** DataFrame: 
+    [   rsid, chromosome, position, genotype    ]
 
 Out:
-*
+(1) temp/df_orient.v
+    ** DataFrame: add+
+    [   query, orient37, orient38   ]
+
+(2) temp/df_snpedia.v 
+    ** DataFrame: add+
+    [   magnitude, repute, summary, fullurl, fulltext   ]
+
+(3) SNP_db.sqlite/genotypes
+    ** SQL Table:
+    [   rsid, chromosome, position, genotype, query, orient37, 
+        orient38, magnitude, repute, summary, fullurl, date     ]
 
 Trigger:
-* display available research report in web-app
-* collect research pubs for missing rsids
-* collect metadata on rsid genotypes from SNPedia
+# TODO signal completion?
 """
 
 # TODO Find alternative to SNPedia for gathering metadata.
@@ -56,6 +66,10 @@ import modules.functions as fn
 with open("./data/temp/missing_genos.v", "rb") as f:
     df = pickle.load(f)
 
+# %%
+df.head()
+# %%
+
 # add columns for genotypes table
 add_cols = ["query","orient37","orient38","magnitude", "repute", "summary", "fullurl", "fulltext"]
 for col in add_cols:
@@ -86,16 +100,12 @@ df_q = fn.get_queries(df_flip)
 # Queries missing orient37 can't be used so they are deleted here.
 df_q.loc[(df_q.orient37 == 'missing'), 'query'] = ''
 
-#%%
 # Query remaining info from SNPedia & save to file: df_snpedia.
 df_g = fn.join_snpedia(df_q)
+# TODO many queries failed to return metadata, fix.
 
-# %%
-# JUST THIS TIME THEN DELETE
-df_g = df_snpedia
-fn.create_db()
-# %%
+df_g.drop(columns='fulltext', inplace=True) # drop extra query column
 df_g["date"] = pd.datetime.now()
 df_g = df_g.replace(r"^\s*$", np.nan, regex=True) # replace empty strings with np.nan
 cnx = fn.create_connection("data/SNP_db.sqlite")
-df_g.to_sql('genotypes', cnx, if_exists='append', index=False)
+df_g.to_sql('genotypes', cnx, if_exists='append', index=False) # send to DB
