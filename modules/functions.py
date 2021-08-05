@@ -282,26 +282,9 @@ def send_data_to_db(data, table_name, db_path="data/training.sqlite", if_exist="
     return
 
 
-# // API FUNCTIONS
+# //---------------------------- API FUNCTIONS
 
-
-def all_snpedia_rsids():
-    """Get all SNP rsids that exist on SNPedia API
-
-    Returns:
-        list: rsid ids
-    """
-    snpedia = MediaWiki(url="https://bots.snpedia.com/api.php")
-
-    # pull list of all available SNP markers
-    all_snps = snpedia.categorymembers("Is a snp", results=None, subcategories=False)
-    all_snps = [s.lower() for s in all_snps]  # convert to lowercase
-
-    # save to file
-    with open("./data/SNPedia_ids.txt", "wb") as f:
-        pickle.dump((all_snps), f)
-
-    return all_snps
+# // 23andMe
 
 
 def all_chromosome_accessions_23me():
@@ -375,6 +358,28 @@ def exclude_indels(df):
     print(f"{count} INDELs removed from query DataFrame")
 
     return df
+
+
+# // SNPEDIA
+
+
+def all_snpedia_rsids():
+    """Get all SNP rsids that exist on SNPedia API
+
+    Returns:
+        list: rsid ids
+    """
+    snpedia = MediaWiki(url="https://bots.snpedia.com/api.php")
+
+    # pull list of all available SNP markers
+    all_snps = snpedia.categorymembers("Is a snp", results=None, subcategories=False)
+    all_snps = [s.lower() for s in all_snps]  # convert to lowercase
+
+    # save to file
+    with open("./data/SNPedia_ids.txt", "wb") as f:
+        pickle.dump((all_snps), f)
+
+    return all_snps
 
 
 #  ---  find SNPedia RSID orientations (positive or negative)
@@ -535,9 +540,6 @@ def join_snpedia(df):
     print("Done: join_snpedia, saved to temp/df_snpedia.v")
 
     return df
-
-
-# //----- pull Mag & Summary per Geno from SNPedia
 
 
 # // ML FUNCTIONS ****************************************************
